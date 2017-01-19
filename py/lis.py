@@ -21,7 +21,10 @@ Strings = str
 
 List = list  # A Scheme List is implemented as a Python list
 
-Number = (int, float) # A Scheme Number is implemented as a Python int or float
+# A Scheme Number is implemented as a Python int or float
+Number = (int, float, complex) 
+
+Boolean = bool
 
 eof_object = Symbol('#<eof-object>')  # Note: uninterned; can't be read
 
@@ -67,7 +70,7 @@ def atom(token):
     elif token == '#f':
         return False
     elif token[0] == '"':
-        return token[1:-1]
+        return str(token[1:-1])
     try:
         return int(token)
     except ValueError:
@@ -150,6 +153,7 @@ def standard_env():
     env.update({
         '+':op.add, '-':op.sub, '*':op.mul, '/':op.truediv, '%':op.mod,
         '>':op.gt, '<':op.lt, '>=':op.ge, '<=':op.le, '=':op.eq,
+        'display': print,
         'abs':     abs,
         'append':  op.add,
         'apply':   lambda fn, *args, **kwargs: fn(*args, **kwargs),
@@ -166,12 +170,10 @@ def standard_env():
         'max':     max,
         'min':     min,
         'not':     op.not_,
-        'null?':   lambda x: x == [],
-        'number?': lambda x: isinstance(x, Number),
-        'string?': lambda x: isinstance(x, Strings),
-        'procedure?': callable,
         'round':   round,
         'symbol?': lambda x: isinstance(x, Symbol),
+        'string?': lambda x: isinstance(x, str),
+        'exit': lambda: sys.exit(0)
     })
     return env
 
@@ -191,20 +193,26 @@ def eval(exp, env=global_env):
         (_, test, conseq, alt) = exp
         exp = (conseq if eval(test, env) else alt)
         return eval(exp, env)
-    elif exp[0] is _define:  # definition (define var exp)
-        (_, var, exp) = exp
+    elif exp[0] is _define:  # definition (define var exp) 
+        #(_, var, exp) = exp              #(define (<id> <id>*) (<expr>+))
+        var = exp[1]
+        exp = exp[2:]
         if isinstance(var, list): # Procedure
             name = var[0]
             parms = var[1:]
             body = exp
             env[name] = Procedure(name, parms, body, env)
-        else:  # variable
-            env[var] = eval(exp, env)
+        elif isinstance(var, Symbol):  # variable
+            env[var] = eval(exp[0], env)
+        else:
+            print("DEFINE: no var")
     elif exp[0] is _set:  # assignment (set! var exp)
         (_, var, exp) = exp
         env.set(var, eval(exp, env))
-    elif exp[0] is _lambda:  # procedure (lambda (var*) exp)
-        (_, parms, body) = exp
+    elif exp[0] is _lambda:  # procedure (lambda (<var>*) <expr>+)
+        #(_, parms, body) = exp
+        parms = exp[1]
+        body = exp[2:]
         return Procedure("lambda", parms, body, env)
     else:  # procedure call (proc exp*)
         proc = eval(exp[0], env)
@@ -212,7 +220,14 @@ def eval(exp, env=global_env):
         return proc(*args)
 
 class Procedure(object):
-    """A user-defined Scheme procedure."""
+    """A user-defined Scheme procedure.
+    args:
+        name: the name of the procedure.
+        parms: the parameter list of the procedure.
+        body: a list of expressions that need to be executed 
+              in the body of the procedure. [<exp>*]
+        env: environment in which the definition of the process
+    """
     def __init__(self, name, parms, body, env):
         self.name = name
         self.parms = parms
@@ -220,7 +235,11 @@ class Procedure(object):
         self.env = env
 
     def __call__(self, *args):
-        return eval(self.body, Env(self.parms, args, self.env))
+        if len(self.body) > 1:  # the function's body include multiple exprs
+            return [eval(exp, Env(self.parms, args, self.env)) \
+                                                    for exp in self.body][-1]
+        else:  # the function's body include one expression
+            return eval(self.body[0], Env(self.parms, args, self.env))
 
     def __repr__(self):
         return "#<procedure: {name}>".format(name=self.name)
@@ -249,7 +268,8 @@ def repl(prompt='lispy> ', inport=InPort(sys.stdin), out=sys.stdout):
     while True:
         try:
             if prompt:
-                sys.stderr.write(prompt)
+                #sys.stderr.write(prompt)
+                print(prompt, end='', flush=True)
             exp = parse(inport)
             if exp is eof_object:
                 return
