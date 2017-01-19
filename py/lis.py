@@ -184,36 +184,46 @@ def eval(exp, env=global_env):
         return env.find(exp)
     elif not isinstance(exp, List):  # constant literal
         return exp
-    elif exp[0] is _quote:  # quotation
+    elif exp[0] is _quote:  # quotation (quote exp)
         (_, exp) = exp
         return exp
-    elif exp[0] is _if:   # conditional
+    elif exp[0] is _if:   # conditional (if test conseq alt)
         (_, test, conseq, alt) = exp
         exp = (conseq if eval(test, env) else alt)
         return eval(exp, env)
-    elif exp[0] is _define:  # definition
+    elif exp[0] is _define:  # definition (define var exp)
         (_, var, exp) = exp
-        env[var] = eval(exp, env)
-    elif exp[0] is _set:  # assignment
+        if isinstance(var, list): # Procedure
+            name = var[0]
+            parms = var[1:]
+            body = exp
+            env[name] = Procedure(name, parms, body, env)
+        else:  # variable
+            env[var] = eval(exp, env)
+    elif exp[0] is _set:  # assignment (set! var exp)
         (_, var, exp) = exp
         env.set(var, eval(exp, env))
-    elif exp[0] is _lambda:  # procedure
+    elif exp[0] is _lambda:  # procedure (lambda (var*) exp)
         (_, parms, body) = exp
-        return Procedure(parms, body, env)
-    else:  # procedure call
+        return Procedure("lambda", parms, body, env)
+    else:  # procedure call (proc exp*)
         proc = eval(exp[0], env)
         args = [eval(arg, env) for arg in exp[1:]]
         return proc(*args)
 
 class Procedure(object):
     """A user-defined Scheme procedure."""
-    def __init__(self, parms, body, env):
+    def __init__(self, name, parms, body, env):
+        self.name = name
         self.parms = parms
         self.body = body
         self.env = env
 
     def __call__(self, *args):
         return eval(self.body, Env(self.parms, args, self.env))
+
+    def __repr__(self):
+        return "#<procedure: {name}>".format(name=self.name)
 
 #### main
 def to_string(x):
