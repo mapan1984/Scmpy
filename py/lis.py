@@ -11,8 +11,8 @@ def Sym(s, symbol_table={}):
         symbol_table[s] = Symbol(s)
     return symbol_table[s]
 
-_quote, _if, _set, _define, _lambda, _begin, definemacro, = \
-    map(Sym, "quote if set! define lambda begin define-macro".split())
+_quote, _if, _cond, _set, _define, _lambda, _begin, definemacro, = \
+    map(Sym, "quote if cond set! define lambda begin define-macro".split())
 
 _quasiquote, _unquote, _unquotesplicing = \
     map(Sym, "quasiquote unquote unquote-splicing".split())
@@ -24,20 +24,32 @@ List = list  # A Scheme List is implemented as a Python list
 # A Scheme Number is implemented as a Python int or float
 Number = (int, float, complex) 
 
-Boolean = bool
-
 eof_object = Symbol('#<eof-object>')  # Note: uninterned; can't be read
 
 ##### parse
+def cond_to_if(expr):
+    """"Convert the cond structure to an if construct"""
+    def expand_clauses(clauses):
+        if len(clauses) == 0:
+            raise SyntaxError("empty cond")
+        first, rest = clauses[0], clauses[1:]
+        if first[0] == "else":
+            if rest == []:
+                return first[1]
+            else:
+                raise SyntaxError("ELSE clause isn't last")
+        else:
+            return [Sym('if'), first[0], first[1], expand_clauses(rest)]
+    return expand_clauses(expr[1:])
+
 class InPort(object):
     """An input port. Retains a line of chars.
     tokenizer:
         匹配句首任意空格\s*
         之后为,@
               ( ' ` , )
-
-              以;开头的任意数量字符
-
+              字符串
+              ;.* 注释
     """
     tokenizer = \
         r'''\s*(,@|[('`,)]|"(?:[\\].|[^\\"])*"|;.*|[^\s('"`,;)]*)(.*)'''
@@ -189,6 +201,8 @@ def eval(exp, env=global_env):
     elif exp[0] is _quote:  # quotation (quote exp)
         (_, exp) = exp
         return exp
+    elif exp[0] is _cond:  # (cond (<test> <conseq>)*)
+        return eval(cond_to_if(exp), env)
     elif exp[0] is _if:   # conditional (if test conseq alt)
         (_, test, conseq, alt) = exp
         exp = (conseq if eval(test, env) else alt)
