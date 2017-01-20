@@ -1,60 +1,95 @@
-from representation import Pair
-from split import bulid_exp_list
+"""
+Resolves the input to a list structure that can be evaluated.
+"""
 
-class Stack:
-    def __init__(self, line=None):
-        self.line = line or []
-        self.index = len(self.line)
+import re
 
-    def pop(self):
-        self.index -= 1
-        return self.line.pop()
+from data import *
 
-    def top(self):
-        return self.line[self.index-1]
+class InPort(object):
+    """An input port. Retains a line of chars.
+    tokenizer: to match lisp's token
+    """
 
-    def stash(self, val):
-        self.index += 1
-        self.line.append(val)
+#     tokenizer = re.compile(
+#         r'''\s*(,@|[('`,)]|"(?:[\\].|[^\\"])*"|;.*|[^\s('"`,;)]*|\d/\d)(.*)''')
 
-    def not_empty(self):
-        return self.index > 0
+    tokenizer = re.compile(r'''
+        \s*                     # Start with any whitespace
+        (
+         ,@                     # ,@
+        |[('`,)]                # ( ' ` , )
+        |"(?:[\\].|[^\\"])*"    # string
+        |;.*                    # commentary
+        |[^\s('"`,;)]*          # Symbols, Numbers
+        |\d/\d                  # fraction
+        )
+        (.*)
+        ''', re.VERBOSE)
 
-def parse(exp_stack):
-    buffer = Stack()
-    while exp_stack.not_empty():
-        val = exp_stack.pop()
-        if val == ')':
-            buffer.stash(val)
-        elif val == '(':
-            car = buffer.pop()
-            buffer.pop()
-            if buffer.not_empty():
-                if buffer.top() != ')':
-                    cdr = buffer.pop()
-                    val = Pair(car, cdr)
-                    buffer.stash(val)
+    def __init__(self, file):
+        self.file = file
+        self.line = ''
+
+    def next_token(self):
+        """Return the next token,
+        reading new text into line buffer if needed."""
+        while True:
+            if self.line == '':
+                self.line = self.file.readline()
+            if self.line == '':
+                return eof_object
+            token, self.line = InPort.tokenizer.match(self.line).groups()
+            if token != '' and not token.startswith(';'):
+                return token
+
+def atom(token):
+    """
+       Numbers become numbers; #t and #f are booleans;
+       "..." become string; otherwise is Symbol.
+    """
+    if token == '#t':
+        return True
+    elif token == '#f':
+        return False
+    elif token[0] == '"':  # string
+        return str(token[1:-1])
+    elif re.match(r'\d/\d', token): # 分数
+        member, denominator = re.match(r'(\d)/(\d)', token).groups()
+        return float(int(member)/int(denominator))
+    try:
+        return int(token)
+    except ValueError:
+        try:
+            return float(token)
+        except ValueError:
+            try:
+                return complex(token.replace('i', 'j', 1))
+            except ValueError:
+                return Sym(token)
+
+quotes = {"'":quote_, "`":quasiquote_, ",":unquote_, ",@":unquotesplicing_}
+
+def parse(inport):
+    """Read a Scheme expression from an input port and parse it."""
+    def read_ahead(token):
+        """return expression tokenize"""
+        if token == '(':
+            L = []
+            while True:
+                token = inport.next_token()
+                if token == ')':
+                    return L
                 else:
-                    buffer.stash(car)
-            else:
-                return car
+                    L.append(read_ahead(token))
+        elif token == ')':
+            raise SyntaxError('unexpected )')
+        elif token in quotes:
+            return [quotes[token], parse(inport)]
+        elif token is eof_object:
+            raise SyntaxError('unexpected EOF in list')
         else:
-            if buffer.top() == ')':
-                buffer.stash(Pair(val, None))
-            else:
-                cdr = buffer.pop()
-                buffer.stash(Pair(val, cdr))
-
-if __name__ == "__main__":
-    #b1 = Stack(["(", "*", 1, 2, ")"])
-    #b2 = Stack(["(", "*", "(", "+", 1, 2, ")", 3, ")"])
-    #val1 = parse(b1)
-    #val2 = parse(b2)
-    #print(val1)
-    #print(val2)
-    exp = "(lambda (x) (+ 1 x))"
-    print(exp)
-    exp = bulid_exp_list(exp)
-    print(exp)
-    b3 = Stack(exp)
-    print(parse(b3))
+            return atom(token)
+    # body of read
+    token1 = inport.next_token()
+    return eof_object if token1 is eof_object else read_ahead(token1)
