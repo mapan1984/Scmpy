@@ -3,8 +3,9 @@ Resolves the input to a list structure that can be evaluated.
 """
 
 import re
+import io
 
-from data import *
+from scmpy.data import *
 
 class InPort(object):
     """An input port. Retains a line of chars.
@@ -28,7 +29,10 @@ class InPort(object):
         ''', re.VERBOSE)
 
     def __init__(self, file):
-        self.file = file
+        if isinstance(file, str):
+            self.file = io.StringIO(file)
+        else:
+            self.file = file
         self.line = ''
 
     def next_token(self):
@@ -70,6 +74,23 @@ def atom(token):
 
 quotes = {"'":quote_, "`":quasiquote_, ",":unquote_, ",@":unquotesplicing_}
 
+def represent(x):
+    """Convert a Python object back into a Lisp-readable string."""
+    if x is True:
+        return "#t"
+    elif x is False:
+        return "#f"
+    elif isinstance(x, Symbol):
+        return x
+    elif isinstance(x, Strings):
+        return '"%s"' % x
+    elif isinstance(x, List):
+        return '('+' '.join(map(represent, x))+')'
+    elif isinstance(x, complex):
+        return str(x).replace('j', 'i')
+    else:
+        return str(x)
+
 def parse(inport):
     """Read a Scheme expression from an input port and parse it."""
     def read_ahead(token):
@@ -92,4 +113,4 @@ def parse(inport):
             return atom(token)
     # body of read
     token1 = inport.next_token()
-    return eof_object if token1 is eof_object else read_ahead(token1)
+    return read_ahead(token1)

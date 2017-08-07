@@ -26,7 +26,7 @@ quote_, if_, cond_, set_, define_, lambda_, begin_, definemacro, = \
 quasiquote_, unquote_, unquotesplicing_ = \
     map(Sym, "quasiquote unquote unquote-splicing".split())
 
-class Number():
+class number():
     def __init__(self, value):
         if '.' in value:
             self.value = float(value)

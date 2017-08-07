@@ -2,8 +2,8 @@
 Evaluate the expression.
 """
 
-from data import *
-from environment import Env, global_env
+from scmpy.data import *
+from scmpy.environment import Env, global_env
 
 def cond_to_if(expr):
     """"Convert the cond structure to an if construct."""
